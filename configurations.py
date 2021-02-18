@@ -1,7 +1,8 @@
-from utils import string2class
-from serialisation import from_yaml_file, from_json_file
 import copy
 from collections import OrderedDict
+
+from .utils import string2class
+from .serialisation import from_yaml_file, from_json_file
 
 
 class Config(dict):

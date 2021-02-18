@@ -1,9 +1,10 @@
 import os
-from utils import get_logger, create_datatime_dir
-from serialisation import to_json_file, from_json_file
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor
 import concurrent.futures
+
+from .utils import get_logger, create_datatime_dir
+from .serialisation import to_json_file, from_json_file
 from .experiments import Experiment
 
 

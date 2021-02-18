@@ -1,11 +1,12 @@
 import os
-from utils import set_initial_seed, string2class
-from serialisation import to_json_file, from_pkl_file, to_torch_file, from_torch_file
-from configurations import create_object_from_config
 import torch as th
-from datasets import ListDataset
 from abc import abstractmethod
 import copy
+
+from .utils import set_initial_seed, string2class
+from .serialisation import to_json_file, from_pkl_file, to_torch_file, from_torch_file
+from .configurations import create_object_from_config
+from .datasets import ListDataset
 
 
 class CollateFun:

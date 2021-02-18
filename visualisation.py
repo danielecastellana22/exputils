@@ -4,11 +4,12 @@ import matplotlib.pyplot as plt
 from networkx.drawing.nx_agraph import graphviz_layout
 import networkx as nx
 import os
+import torch as th
+
 from .serialisation import from_json_file
 from .utils import eprint, get_logger
-from configurations import Config, ExpConfig
-from experiments import Experiment
-import torch as th
+from .configurations import Config, ExpConfig
+from .experiments import Experiment
 
 
 def __plot_matrix__(ax, cm, x_label, x_tick_label, y_label, y_tick_label, title=None, cmap='viridis', vmin=None, vmax=None, fmt='.2f'):

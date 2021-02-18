@@ -1,9 +1,10 @@
 from tqdm import tqdm
 import torch as th
 import copy
-from metrics import ValueMetricUpdate, TreeMetricUpdate
 import time
 from torch.utils.data import DataLoader
+
+from .metrics import ValueMetricUpdate, TreeMetricUpdate
 
 
 class BaseTrainer:
