@@ -4,7 +4,7 @@ from serialisation import to_json_file, from_json_file
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor
 import concurrent.futures
-from experiments import Experiment
+from .experiments import Experiment
 
 
 class ExperimentRunner:
