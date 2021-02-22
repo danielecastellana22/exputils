@@ -1,23 +1,12 @@
 import os
 import torch as th
 from torch.utils.data import ConcatDataset
-from abc import abstractmethod
 import copy
 
 from .utils import set_initial_seed, string2class
 from .serialisation import to_json_file, from_pkl_file, to_torch_file, from_torch_file
 from .configurations import create_object_from_config
 from .datasets import ListDataset
-
-
-class CollateFun:
-
-    def __init__(self, device, **kwargs):
-        self.device = device
-
-    @abstractmethod
-    def __call__(self, tuple_data):
-        raise NotImplementedError('Must be implemented in subclasses')
 
 
 # class for all experiments
@@ -64,7 +53,6 @@ class Experiment:
                 outlist.append(ListDataset(from_pkl_file(os.path.join(data_dir, f))))
         return outlist
 
-
     ####################################################################################################################
     # MODULE FUNCTIONS
     ####################################################################################################################
@@ -86,7 +74,7 @@ class Experiment:
     def __get_optimiser__(optim_config, model):
         optim_class = string2class(optim_config['class'])
         params_groups = dict(optim_config.params) if 'params' in optim_config else {}
-        params_groups.update({'params': list(model.parameters())})
+        params_groups.update({'params': [x for x in model.parameters() if x.requires_grad]})
 
         return optim_class([params_groups])
 

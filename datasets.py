@@ -1,3 +1,5 @@
+from abc import abstractmethod
+
 from torch.utils.data import Dataset
 
 
@@ -17,3 +19,12 @@ class ConstValues:
     UNK = 0
     NO_ELEMENT = -1
 
+
+class CollateFun:
+
+    def __init__(self, device, **kwargs):
+        self.device = device
+
+    @abstractmethod
+    def __call__(self, tuple_data):
+        raise NotImplementedError('Must be implemented in subclasses')

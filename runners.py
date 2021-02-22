@@ -124,7 +124,17 @@ class ExperimentRunner:
         all_test_metrics = [[None for i in range(self.num_run)]]
         for i_run in range(self.num_run):
             sub_dir = self.__get_test_run_dir__(i_run)
-            all_test_metrics[0][i_run] = from_json_file(os.path.join(sub_dir, 'test_metrics.json'))
+            l = from_json_file(os.path.join(sub_dir, 'test_metrics.json'))
+            avg_m = {}
+            for x in l:
+                for k, v in x.items():
+                    if k not in avg_m:
+                        avg_m[k] = 0
+                    avg_m[k] += v
+            for k in avg_m:
+                avg_m[k] = avg_m[k]/len(l)
+
+            all_test_metrics[0][i_run] = avg_m
 
         return self.__metrics_list_to_val_dict__(all_test_metrics)
 
