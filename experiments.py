@@ -1,5 +1,6 @@
 import os
 import torch as th
+from torch.utils.data import ConcatDataset
 from abc import abstractmethod
 import copy
 
@@ -39,38 +40,44 @@ class Experiment:
     def __load_training_data__(self):
         dataset_config = self.config.dataset_config
 
-        data_dir = dataset_config.data_dir
-
-        # TODO: allows to load a dataset divided in multiple files (SNLI)
-        trainset = ListDataset(from_pkl_file(os.path.join(data_dir, 'train.pkl')))
-        valset = ListDataset(from_pkl_file(os.path.join(data_dir, 'validation.pkl')))
+        # todo: concat does not allow on-the-fly loading
+        trainset = ConcatDataset(self.__load_list_of_datasets__('train'))
+        valset = ConcatDataset(self.__load_list_of_datasets__('validation'))
 
         if 'max_tr_elements' in dataset_config:
-            return trainset[:dataset_config.max_tr_elements], valset
-        else:
-            return trainset, valset
+            if len(trainset) == 1:
+                trainset = trainset[:dataset_config.max_tr_elements]
+            else:
+                raise ValueError('max_tr_elements options cannnot be set to a list of training data')
+
+        return trainset, valset
 
     def __load_test_data__(self):
-        dataset_config = self.config.dataset_config
-        data_dir = dataset_config.data_dir
+        return self.__load_list_of_datasets__('test')
 
-        testset = ListDataset(from_pkl_file(os.path.join(data_dir, 'test.pkl')))
+    def __load_list_of_datasets__(self, tag):
+        data_dir = self.config.dataset_config.data_dir
 
-        return testset
+        outlist = []
+        for f in os.listdir(data_dir):
+            if tag in f:
+                outlist.append(ListDataset(from_pkl_file(os.path.join(data_dir, f))))
+        return outlist
+
 
     ####################################################################################################################
     # MODULE FUNCTIONS
     ####################################################################################################################
-    def __create_tree_module__(self):
-        tree_m = create_object_from_config(self.config.tree_module_config)
-        if 'params_path' in self.config.tree_module_config:
+    def __create_exp_module__(self):
+        m = create_object_from_config(self.config.exp_module_config)
+        if 'params_path' in self.config.exp_module_config:
             run_dir = os.path.basename(os.path.normpath(self.output_dir))
-            params_path = os.path.join(self.config.tree_module_config.params_path, run_dir)
+            params_path = os.path.join(self.config.exp_module_config.params_path, run_dir)
             params_path = os.path.join(params_path, 'params_learned.pth')
             self.logger.warning('Loading model params from {}'.format(params_path))
             params = from_torch_file(params_path)
-            tree_m.load_state_dict(params)
-        return tree_m
+            m.load_state_dict(params)
+        return m
 
     ####################################################################################################################
     # TRAINER FUNCTIONS
@@ -127,7 +134,7 @@ class Experiment:
 
         trainset, valset = self.__load_training_data__()
 
-        m = self.__create_tree_module__()
+        m = self.__create_exp_module__()
         # save number of parameters
         n_params_dict = {k: v.numel() for k, v in m.state_dict().items()}
         to_json_file(n_params_dict, os.path.join(self.output_dir, 'num_model_parameters.json'))
@@ -153,14 +160,24 @@ class Experiment:
 
             self.__save_test_model_params__(best_model)
 
-            testset = self.__load_test_data__()
+            testset_list = self.__load_test_data__()
+            test_metrics_list = []
+            test_prediction_list = []
+            tm = None
+            for testset in testset_list:
+                test_metrics, test_prediction = trainer.test(best_model, testset,
+                                                             collate_fun=training_params['collate_fun'],
+                                                             metric_class_list=metric_class_list,
+                                                             batch_size=training_params['batch_size'])
 
-            test_metrics, test_prediction = trainer.test(best_model, testset,
-                                                         collate_fun=training_params['collate_fun'],
-                                                         metric_class_list=metric_class_list,
-                                                         batch_size=training_params['batch_size'])
+                tm = test_metrics
+                test_metrics_list.append({x.get_name(): x.get_value() for x in test_metrics})
+                test_prediction_list.append(test_prediction)
 
-            test_metrics_dict = {x.get_name(): x.get_value() for x in test_metrics}
-            to_json_file(test_metrics_dict, os.path.join(self.output_dir, 'test_metrics.json'))
-            to_torch_file(test_prediction, os.path.join(self.output_dir, 'test_prediction.pth'))
-            return test_metrics
+            to_json_file(test_metrics_list, os.path.join(self.output_dir, 'test_metrics.json'))
+            to_torch_file(test_prediction_list, os.path.join(self.output_dir, 'test_prediction.pth'))
+
+            if len(testset_list) == 1:
+                return tm
+            else:
+                return ["Multiple test set!"]

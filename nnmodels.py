@@ -25,7 +25,7 @@ class VectorEmbedding(nn.Module):
 
 class MLP(nn.Module):
 
-    def __init__(self, in_size, num_classes, dropout=0, num_layers=0, h_size=-1, non_linearity='torch.nn.ReLU'):
+    def __init__(self, in_size, out_size, dropout=0, num_layers=0, h_size=-1, non_linearity='torch.nn.ReLU'):
         super(MLP, self).__init__()
         non_linearity_class = string2class(non_linearity)
 
@@ -39,7 +39,7 @@ class MLP(nn.Module):
             prev_out_size = h_size
         if dropout > 0:
             d['dropout_out'] = nn.Dropout(dropout)
-        d['linear_out'] = nn.Linear(prev_out_size, num_classes)
+        d['linear_out'] = nn.Linear(prev_out_size, out_size)
 
         self.MLP = nn.Sequential(d)
 
