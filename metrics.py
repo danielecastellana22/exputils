@@ -22,6 +22,22 @@ class BaseMetric:
     def __str__(self):
         return "{}: {:4f}".format(type(self).__name__, self.final_value)
 
+    def __add__(self, other):
+        t = type(self)
+        # check same type
+        if type(other) is t:
+            o = t()
+            o.final_value = self.final_value + other.final_value
+            return o
+        else:
+            raise TypeError('The metrics must have the same types!')
+
+    def __truediv__(self, num):
+        t = type(self)
+        o = t()
+        o.final_value = self.final_value / num
+        return o
+
     @classmethod
     def get_name(cls):
         return cls.__name__

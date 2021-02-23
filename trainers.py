@@ -201,6 +201,7 @@ class BaseTrainer:
         for v in metrics:
             v.finalise_metric()
 
+        # todo: stack prediciton to remove depencies on batch_size
         return metrics, eval_time, predictions
 
 

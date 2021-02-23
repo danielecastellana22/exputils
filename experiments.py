@@ -30,8 +30,8 @@ class Experiment:
         dataset_config = self.config.dataset_config
 
         # todo: concat does not allow on-the-fly loading
-        trainset = ConcatDataset(self.__load_list_of_datasets__('train'))
-        valset = ConcatDataset(self.__load_list_of_datasets__('validation'))
+        trainset = ConcatDataset(self.__load_list_of_datasets__('train').values())
+        valset = ConcatDataset(self.__load_list_of_datasets__('validation').values())
 
         if 'max_tr_elements' in dataset_config:
             if len(trainset) == 1:
@@ -47,11 +47,11 @@ class Experiment:
     def __load_list_of_datasets__(self, tag):
         data_dir = self.config.dataset_config.data_dir
 
-        outlist = []
+        outdict = {}
         for f in os.listdir(data_dir):
             if tag in f:
-                outlist.append(ListDataset(from_pkl_file(os.path.join(data_dir, f))))
-        return outlist
+                outdict[f] = ListDataset(from_pkl_file(os.path.join(data_dir, f)))
+        return outdict
 
     ####################################################################################################################
     # MODULE FUNCTIONS
@@ -148,24 +148,28 @@ class Experiment:
 
             self.__save_test_model_params__(best_model)
 
-            testset_list = self.__load_test_data__()
-            test_metrics_list = []
-            test_prediction_list = []
-            tm = None
-            for testset in testset_list:
+            testset_dict = self.__load_test_data__()
+            test_metrics_dict = {}
+            test_prediction_dict = {}
+            avg_metrics = []
+            for test_name, testset in testset_dict.items():
                 test_metrics, test_prediction = trainer.test(best_model, testset,
                                                              collate_fun=training_params['collate_fun'],
                                                              metric_class_list=metric_class_list,
                                                              batch_size=training_params['batch_size'])
+                if len(avg_metrics) == 0:
+                    avg_metrics = copy.deepcopy(test_metrics)
+                else:
+                    for i in range(len(avg_metrics)):
+                        avg_metrics[i] = avg_metrics[i] + test_metrics[i]
 
-                tm = test_metrics
-                test_metrics_list.append({x.get_name(): x.get_value() for x in test_metrics})
-                test_prediction_list.append(test_prediction)
+                test_metrics_dict[test_name] = {x.get_name(): x.get_value() for x in test_metrics}
+                test_prediction_dict[test_name] = test_prediction
 
-            to_json_file(test_metrics_list, os.path.join(self.output_dir, 'test_metrics.json'))
-            to_torch_file(test_prediction_list, os.path.join(self.output_dir, 'test_prediction.pth'))
+            to_json_file(test_metrics_dict, os.path.join(self.output_dir, 'test_metrics.json'))
+            to_torch_file(test_prediction_dict, os.path.join(self.output_dir, 'test_prediction.pth'))
 
-            if len(testset_list) == 1:
-                return tm
-            else:
-                return ["Multiple test set!"]
+            # the output is printed. average over all test datasets
+            for i in range(len(avg_metrics)):
+                avg_metrics[i] = avg_metrics[i]/len(avg_metrics)
+            return avg_metrics

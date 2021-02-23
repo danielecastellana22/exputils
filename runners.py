@@ -124,7 +124,7 @@ class ExperimentRunner:
         all_test_metrics = [[None for i in range(self.num_run)]]
         for i_run in range(self.num_run):
             sub_dir = self.__get_test_run_dir__(i_run)
-            l = from_json_file(os.path.join(sub_dir, 'test_metrics.json'))
+            l = list(from_json_file(os.path.join(sub_dir, 'test_metrics.json')).values())
             avg_m = {}
             for x in l:
                 for k, v in x.items():
