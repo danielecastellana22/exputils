@@ -66,12 +66,12 @@ class BaseAccuracy(BaseMetric):
 
     def __init__(self):
         super(BaseMetric, self).__init__()
-        self.n_nodes = 0
+        self.n_val = 0
         self.n_correct = 0
 
     def finalise_metric(self):
-        if self.n_nodes != 0:
-            self.final_value = self.n_correct / self.n_nodes
+        if self.n_val != 0:
+            self.final_value = self.n_correct / self.n_val
         else:
             self.final_value = 0
 
@@ -85,7 +85,7 @@ class Accuracy(BaseAccuracy, ValueMetricUpdate):
         pred = th.argmax(out, 1)
         mask = (gold_label != ConstValues.NO_ELEMENT)
         self.n_correct += th.sum(th.eq(gold_label[mask], pred[mask])).item()
-        self.n_nodes += th.sum(mask).item()
+        self.n_val += th.sum(mask).item()
 
 
 class RootAccuracy(BaseAccuracy, TreeMetricUpdate):
@@ -100,7 +100,7 @@ class RootAccuracy(BaseAccuracy, TreeMetricUpdate):
         b = gold_label[root_ids]
         mask = b != ConstValues.NO_ELEMENT
         self.n_correct += th.sum(th.eq(a[mask], b[mask])).item()
-        self.n_nodes += th.sum(mask).item()
+        self.n_val += th.sum(mask).item()
 
 
 class LeavesAccuracy(BaseAccuracy, TreeMetricUpdate):
@@ -115,7 +115,7 @@ class LeavesAccuracy(BaseAccuracy, TreeMetricUpdate):
         b = gold_label[leaves_ids]
         mask = b != ConstValues.NO_ELEMENT
         self.n_correct += th.sum(th.eq(a[mask], b[mask])).item()
-        self.n_nodes += th.sum(mask).item()
+        self.n_val += th.sum(mask).item()
 
 
 class MSE(BaseMetric, ValueMetricUpdate):
@@ -129,6 +129,23 @@ class MSE(BaseMetric, ValueMetricUpdate):
 
     def update_metric(self, out, gold_label):
         self.val += th.sum((out-gold_label).pow(2)).item()
+        self.n_val += len(gold_label)
+
+    def finalise_metric(self):
+        self.final_value = self.val / self.n_val
+
+
+class MAE(BaseMetric, ValueMetricUpdate):
+
+    HIGHER_BETTER = False
+
+    def __init__(self):
+        super(MAE, self).__init__()
+        self.val = 0
+        self.n_val = 0
+
+    def update_metric(self, out, gold_label):
+        self.val += th.abs(th.sum((out-gold_label))).item()
         self.n_val += len(gold_label)
 
     def finalise_metric(self):
@@ -178,4 +195,4 @@ class RootChildrenAccuracy(BaseAccuracy, TreeMetricUpdate):
 
         pred = th.argmax(out, 1)
         self.n_correct += th.sum(th.eq(pred[root_ch_id], gold_label[root_ch_id])).item()
-        self.n_nodes += len(root_ch_id)
+        self.n_val += len(root_ch_id)

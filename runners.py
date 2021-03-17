@@ -75,7 +75,7 @@ class ExperimentRunner:
             test_id = 'test{}'.format(i_run)
             test_out_dir = self.__get_test_run_dir__(i_run)
             os.makedirs(test_out_dir)
-            output_msg = 'Testing run {} finished:'.format(i_run)
+            output_msg = 'Testing run {} finished'.format(i_run)
 
             self.__start_single_exp__(best_config, test_id, test_out_dir, output_msg, do_test=True)
 

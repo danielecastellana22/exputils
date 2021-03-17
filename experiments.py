@@ -171,5 +171,6 @@ class Experiment:
 
             # the output is printed. average over all test datasets
             for i in range(len(avg_metrics)):
-                avg_metrics[i] = avg_metrics[i]/len(avg_metrics)
+                avg_metrics[i] = avg_metrics[i]/len(testset_dict)
+
             return avg_metrics
