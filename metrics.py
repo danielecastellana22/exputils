@@ -94,7 +94,7 @@ class RootAccuracy(BaseAccuracy, TreeMetricUpdate):
         super(RootAccuracy, self).__init__()
 
     def update_metric(self, out, gold_label, graph):
-        root_ids = [i for i in range(graph.number_of_nodes()) if graph.out_degree(i) == 0]
+        root_ids = [i for i in range(graph.number_of_nodes()) if graph.out_degrees(i) == 0]
         pred = th.argmax(out, 1)
         a = pred[root_ids]
         b = gold_label[root_ids]
@@ -109,7 +109,7 @@ class LeavesAccuracy(BaseAccuracy, TreeMetricUpdate):
         super(LeavesAccuracy, self).__init__()
 
     def update_metric(self, out, gold_label, graph):
-        leaves_ids = [i for i in range(graph.number_of_nodes()) if graph.in_degree(i) == 0]
+        leaves_ids = [i for i in range(graph.number_of_nodes()) if graph.in_degrees(i) == 0]
         pred = th.argmax(out, 1)
         a = pred[leaves_ids]
         b = gold_label[leaves_ids]
@@ -190,7 +190,7 @@ class RootChildrenAccuracy(BaseAccuracy, TreeMetricUpdate):
         super(RootChildrenAccuracy, self).__init__()
 
     def update_metric(self, out, gold_label, graph):
-        root_ids = [i for i in range(graph.number_of_nodes()) if graph.out_degree(i) == 0]
+        root_ids = [i for i in range(graph.number_of_nodes()) if graph.out_degrees(i) == 0]
         root_ch_id = [i for i in range(graph.number_of_nodes()) if i not in root_ids and graph.successors(i).item() in root_ids]
 
         pred = th.argmax(out, 1)
