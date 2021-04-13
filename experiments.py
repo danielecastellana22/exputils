@@ -81,7 +81,7 @@ class Experiment:
     def __get_trainer__(self):
         return create_object_from_config(self.config.trainer_config, debug_mode=self.debug_mode, logger=self.logger)
 
-    def __get_training_params__(self, model):
+    def __get_training_params__(self, model, device):
         d = copy.deepcopy(self.config.trainer_config.training_params)
 
         if 'optimiser' in d:
@@ -89,7 +89,7 @@ class Experiment:
         if 'loss_function' in d:
             d['loss_function'] = create_object_from_config(d['loss_function'])
         if 'collate_fun' in d:
-            d['collate_fun'] = create_object_from_config(d['collate_fun'], device=self.__get_device__())
+            d['collate_fun'] = create_object_from_config(d['collate_fun'], device=device)
 
         return d
 
@@ -102,7 +102,6 @@ class Experiment:
         device = th.device('cuda:{}'.format(dev)) if cuda else th.device('cpu')
         if cuda:
             th.cuda.set_device(dev)
-
         return device
 
     def __save_test_model_params__(self, best_model):
@@ -127,8 +126,12 @@ class Experiment:
         n_params_dict = {k: v.numel() for k, v in m.state_dict().items()}
         to_json_file(n_params_dict, os.path.join(self.output_dir, 'num_model_parameters.json'))
 
+        dev = self.__get_device__()
+        self.logger.info('Device set to {}'.format(dev))
+        m.to(dev)
+
         trainer = self.__get_trainer__()
-        training_params = self.__get_training_params__(m)
+        training_params = self.__get_training_params__(m, dev)
 
         # train and validate
         best_val_metrics, best_model, info_training = trainer.train_and_validate(model=m,
