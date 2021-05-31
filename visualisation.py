@@ -189,5 +189,5 @@ def get_exp_best_model_best_pred(model_dir, out_dir, run_exp_dir=None, id_run=-1
     m = m_exp.__create_exp_module__()
     m.load_state_dict(th.load(os.path.join(results_dir, 'test/run_{}/params_learned.pth'.format(best_test_id))))
 
-    pred = th.cat(th.load(os.path.join(results_dir, 'test/run_{}/test_prediction.pth'.format(best_test_id))), dim=0).numpy()
+    pred = th.load(os.path.join(results_dir, 'test/run_{}/test_prediction.pth'.format(best_test_id)))
     return m_exp, m, pred

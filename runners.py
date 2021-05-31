@@ -2,8 +2,8 @@ import os
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor
 import concurrent.futures
-
-from .utils import get_logger, create_datatime_dir
+import random
+from .utils import get_logger, create_datatime_dir, set_initial_seed
 from .serialisation import to_json_file, from_json_file
 from .experiments import Experiment
 
@@ -11,14 +11,16 @@ from .experiments import Experiment
 class ExperimentRunner:
 
     # TODO: add recovery strategy: a flag which indicates train, recover, test
-    def __init__(self, output_dir, num_run, num_workers, metric_class_list, config_list, debug_mode):
+    def __init__(self, output_dir, num_run, num_workers, metric_class_list, device, config_list, seed, debug_mode):
         # self.experiment_class = experiment_class
+        self.device = device
         self.config_list = config_list
         self.num_run = num_run
         self.output_dir = create_datatime_dir(output_dir)
         self.logger = get_logger('runner', self.output_dir, file_name='runner.log', write_on_console=True)
         self.metric_class_list = metric_class_list
         self.debug_mode = debug_mode
+        self.seed = set_initial_seed(seed)
 
         if not self.debug_mode:
             self.pool = ProcessPoolExecutor(max_workers=num_workers)
@@ -91,9 +93,9 @@ class ExperimentRunner:
         self.logger.info('Test results saved')
 
     @staticmethod
-    def __exp_execution_fun__(exp_class, c, exp_id, exp_out_dir, metric_list, do_test, debug_mode):
+    def __exp_execution_fun__(c, exp_id, exp_out_dir, metric_list, do_test, device, seed, debug_mode):
         exp_logger = get_logger(exp_id, exp_out_dir, file_name='experiment.log', write_on_console=debug_mode)
-        exp = exp_class(c, exp_out_dir, exp_logger, debug_mode)
+        exp = Experiment(c, exp_out_dir, exp_logger, device, seed, debug_mode)
         return exp.run_training(metric_list, do_test)
 
     def __start_single_exp__(self, config, exp_id, exp_out_dir, output_msg, do_test):
@@ -101,7 +103,8 @@ class ExperimentRunner:
         def done_callback(fut):
             self.logger.info('{}: {}.'.format(output_msg, ' | '.join(map(str, fut.result()))))
 
-        fun_params = [Experiment, config, exp_id, exp_out_dir, self.metric_class_list, do_test, self.debug_mode]
+        fun_params = [config, exp_id, exp_out_dir, self.metric_class_list, do_test, self.device,
+                      random.randrange(2**32-1), self.debug_mode]
         if self.debug_mode:
             ris = self.__exp_execution_fun__(*fun_params)
             self.logger.info('{}: {}.'.format(output_msg, ' | '.join(map(str, ris))))

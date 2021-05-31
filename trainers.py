@@ -2,13 +2,12 @@ from tqdm import tqdm
 import torch as th
 import copy
 import time
-from torch.utils.data import DataLoader
-
 from .metrics import ValueMetricUpdate, TreeMetricUpdate
 
 
 class BaseTrainer:
 
+    # TODO: add here training_params. Also, allows specifying torch callbacks
     def __init__(self, debug_mode, logger):
         self.debug_mode = debug_mode
         self.logger = logger
@@ -24,21 +23,17 @@ class BaseTrainer:
 
     def train_and_validate(self, **kwargs):
 
+        # get args
         model = kwargs.pop('model')
-        #loss_function, optimizer,
-        trainset = kwargs.pop('trainset')
-        valset = kwargs.pop('valset')
-        collate_fun = kwargs.pop('collate_fun')
+        train_loader = kwargs.pop('train_loader')
+        val_loader = kwargs.pop('val_loader')
         metric_class_list = kwargs.pop('metric_class_list')
-        logger = self.logger.getChild('train')
-        batch_size = kwargs.pop('batch_size')
-        n_epochs = kwargs.pop('n_epochs')
         early_stopping_patience = kwargs.pop('early_stopping_patience')
         evaluate_on_training_set = kwargs.pop('evaluate_on_training_set') if 'evaluate_on_training_set' in kwargs else False
         eps_loss = kwargs.pop('eps_loss', None)
 
-        train_loader = DataLoader(trainset, batch_size=batch_size, collate_fn=collate_fun, shuffle=True, num_workers=0)
-        val_loader = DataLoader(valset, batch_size=batch_size, collate_fn=collate_fun, shuffle=False, num_workers=0)
+        logger = self.logger.getChild('train')
+        n_epochs = kwargs.pop('n_epochs')
 
         best_val_metrics = None
         best_epoch = -1
@@ -62,24 +57,18 @@ class BaseTrainer:
 
             # TODO: implement print loss every tot. Can be useful for big dataset
             logger.debug('START TRAINING EPOCH {}.'.format(epoch))
-            with tqdm(total=len(trainset), desc='Training epoch ' + str(epoch) + ': ', disable=not self.debug_mode) as pbar:
 
-                print_every = pbar.total // 100
-                loss_to_print = 0
-                tot_loss = 0
-                n=0
-                for step, batch in enumerate(train_loader):
+            loss_to_print = 0
+            tot_loss = 0
 
-                    in_data = batch[0]
-                    out_data = batch[1]
-                    loss, f_time, b_time = self.__training_step__(model=model, in_data=in_data, out_data=out_data, **kwargs)
-                    tot_loss += loss
-                    loss_to_print += loss
-                    tr_forw_time += f_time
-                    tr_backw_time += b_time
-
-                    n += min(batch_size, pbar.total - n)
-                    pbar.update(min(batch_size, pbar.total - n))
+            for batch in tqdm(train_loader, desc='Training epoch ' + str(epoch) + ': ', disable=not self.debug_mode ):
+                in_data = batch[0]
+                out_data = batch[1]
+                loss, f_time, b_time = self.__training_step__(model=model, in_data=in_data, out_data=out_data, **kwargs)
+                tot_loss += loss
+                loss_to_print += loss
+                tr_forw_time += f_time
+                tr_backw_time += b_time
 
             self.logger.info("End training: Epoch {:3d} | Tot. Loss: {:4.3f}".format(epoch, tot_loss))
             self.__on_epoch_ends__(model)
@@ -87,9 +76,7 @@ class BaseTrainer:
             if evaluate_on_training_set:
                 logger.debug("START EVALUATION ON TRAINING SET")
                 # eval on tr set
-                pbar = tqdm(total=len(trainset), desc='Evaluate epoch ' + str(epoch) + ' on training set: ',
-                            disable=not self.debug_mode)
-                metrics, _, _ = self.__evaluate_model__(model, train_loader, metric_class_list, pbar, batch_size)
+                metrics, _, _ = self.__evaluate_model__(model, train_loader, metric_class_list, 'Evaluate epoch ' + str(epoch) + ' on training set: ')
 
                 # print tr metrics
                 s = "Evaluation on training set: Epoch {:03d} | ".format(epoch)
@@ -100,9 +87,7 @@ class BaseTrainer:
 
             # eval on validation set
             logger.debug("START EVALUATION ON VALIDATION SET")
-            pbar = tqdm(total=len(valset), desc='Evaluate epoch ' + str(epoch) + ' on validation set: ',
-                        disable=not self.debug_mode)
-            metrics, eval_val_time, _ = self.__evaluate_model__(model, val_loader, metric_class_list, pbar, batch_size)
+            metrics, eval_val_time, _ = self.__evaluate_model__(model, val_loader, metric_class_list, 'Evaluate epoch ' + str(epoch) + ' on validation set: ')
 
             # print validation metrics
             s = "Evaluation on validation set: Epoch {:03d} | ".format(epoch)
@@ -150,13 +135,10 @@ class BaseTrainer:
 
         return best_val_metrics, best_model, info_training
 
-    def test(self, model, testset, collate_fun, metric_class_list, batch_size):
+    def test(self, model, test_loader, metric_class_list):
 
         logger = self.logger.getChild('test')
-        testloader = DataLoader(testset, batch_size=batch_size, collate_fn=collate_fun, shuffle=False, num_workers=0)
-
-        pbar = tqdm(total=len(testset), desc='Evaluate on test set: ', disable=not self.debug_mode)
-        metrics, _, predictions = self.__evaluate_model__(model, testloader, metric_class_list, pbar, batch_size)
+        metrics, _, predictions = self.__evaluate_model__(model, test_loader, metric_class_list, 'Evaluate on test set: ')
 
         # print metrics
         s = "Test: "
@@ -167,7 +149,7 @@ class BaseTrainer:
 
         return metrics, predictions
 
-    def __evaluate_model__(self, model, dataloader, metric_class_list, pbar, batch_size):
+    def __evaluate_model__(self, model, data_loader, metric_class_list, desc):
         predictions = []
         eval_time = 0
         metrics = []
@@ -175,8 +157,8 @@ class BaseTrainer:
             metrics.append(c())
 
         model.eval()
-        for step, batch in enumerate(dataloader):
 
+        for batch in tqdm(data_loader, desc=desc, disable=not self.debug_mode):
             t = time.time()
             in_data = batch[0]
             out_data = batch[1]
@@ -193,10 +175,6 @@ class BaseTrainer:
                 if isinstance(v, TreeMetricUpdate):
                     v.update_metric(out, out_data, *in_data)
             eval_time += (time.time() - t)
-
-            pbar.update(min(batch_size, pbar.total - pbar.n))
-
-        pbar.close()
 
         for v in metrics:
             v.finalise_metric()

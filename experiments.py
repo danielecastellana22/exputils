@@ -12,12 +12,18 @@ from .datasets import ListDataset
 # class for all experiments
 class Experiment:
 
-    def __init__(self, config, output_dir, logger, debug_mode):
+    def __init__(self, config, output_dir, logger, device, seed, debug_mode):
 
         self.config = config
         self.output_dir = output_dir
         self.logger = logger
         self.debug_mode = debug_mode
+        self.device = device
+        # set device
+        if self.device.startswith('cuda'):
+            th.cuda.device(self.device)
+
+        self.seed = set_initial_seed(seed)
 
         # save config
         to_json_file(self.config, os.path.join(output_dir, 'config.json'))
@@ -26,32 +32,9 @@ class Experiment:
     # DATASET FUNCTIONS
     ####################################################################################################################
     # this methods return trainset, valset
-    def __load_training_data__(self):
-        dataset_config = self.config.dataset_config
 
-        # todo: concat does not allow on-the-fly loading
-        trainset = ConcatDataset(self.__load_list_of_datasets__('train').values())
-        valset = ConcatDataset(self.__load_list_of_datasets__('validation').values())
-
-        if 'max_tr_elements' in dataset_config:
-            if len(trainset) == 1:
-                trainset = trainset[:dataset_config.max_tr_elements]
-            else:
-                raise ValueError('max_tr_elements options cannnot be set to a list of training data')
-
-        return trainset, valset
-
-    def __load_test_data__(self):
-        return self.__load_list_of_datasets__('test')
-
-    def __load_list_of_datasets__(self, tag):
-        data_dir = self.config.dataset_config.data_dir
-
-        outdict = {}
-        for f in os.listdir(data_dir):
-            if tag in f:
-                outdict[f] = ListDataset(from_pkl_file(os.path.join(data_dir, f)))
-        return outdict
+    def __get_dataset_loader__(self):
+        return create_object_from_config(self.config.dataset_config, device=self.device)
 
     ####################################################################################################################
     # MODULE FUNCTIONS
@@ -88,22 +71,12 @@ class Experiment:
             d['optimiser'] = self.__get_optimiser__(d['optimiser'], model)
         if 'loss_function' in d:
             d['loss_function'] = create_object_from_config(d['loss_function'])
-        if 'collate_fun' in d:
-            d['collate_fun'] = create_object_from_config(d['collate_fun'], device=device)
 
         return d
 
     ####################################################################################################################
     # UTILS FUNCTIONS
     ####################################################################################################################
-    def __get_device__(self):
-        dev = self.config.others_config.gpu
-        cuda = dev >= 0
-        device = th.device('cuda:{}'.format(dev)) if cuda else th.device('cpu')
-        if cuda:
-            th.cuda.set_device(dev)
-        return device
-
     def __save_test_model_params__(self, best_model):
         to_torch_file(best_model.state_dict(), os.path.join(self.output_dir, 'params_learned.pth'))
 
@@ -112,21 +85,19 @@ class Experiment:
     ####################################################################################################################
     def run_training(self, metric_class_list, do_test):
         # initialise random seed
-        if 'seed' in self.config.others_config:
-            seed = self.config.others_config.seed
-        else:
-            seed = -1
-        seed = set_initial_seed(seed)
-        self.logger.info('Seed set to {}.'.format(seed))
+        self.logger.info('Seed set to {}.'.format(self.seed))
 
-        trainset, valset = self.__load_training_data__()
+        dataset_loader = self.__get_dataset_loader__()
+
+        train_loader = dataset_loader.get_training_data_loader()
+        val_loader = dataset_loader.get_validation_data_loader()
 
         m = self.__create_exp_module__()
         # save number of parameters
         n_params_dict = {k: v.numel() for k, v in m.state_dict().items()}
         to_json_file(n_params_dict, os.path.join(self.output_dir, 'num_model_parameters.json'))
 
-        dev = self.__get_device__()
+        dev = self.device
         self.logger.info('Device set to {}'.format(dev))
         m.to(dev)
 
@@ -134,9 +105,10 @@ class Experiment:
         training_params = self.__get_training_params__(m, dev)
 
         # train and validate
+        # TODO: trainer must takes dataloader as input
         best_val_metrics, best_model, info_training = trainer.train_and_validate(model=m,
-                                                                                 trainset=trainset,
-                                                                                 valset=valset,
+                                                                                 train_loader=train_loader,
+                                                                                 val_loader=val_loader,
                                                                                  metric_class_list=metric_class_list,
                                                                                  **training_params)
 
@@ -151,15 +123,13 @@ class Experiment:
 
             self.__save_test_model_params__(best_model)
 
-            testset_dict = self.__load_test_data__()
+            test_loader_dict = dataset_loader.get_test_data_loader_dict()
             test_metrics_dict = {}
             test_prediction_dict = {}
             avg_metrics = []
-            for test_name, testset in testset_dict.items():
-                test_metrics, test_prediction = trainer.test(best_model, testset,
-                                                             collate_fun=training_params['collate_fun'],
-                                                             metric_class_list=metric_class_list,
-                                                             batch_size=training_params['batch_size'])
+            for test_name, test_loader in test_loader_dict.items():
+                test_metrics, test_prediction = trainer.test(best_model, test_loader,
+                                                             metric_class_list=metric_class_list)
                 if len(avg_metrics) == 0:
                     avg_metrics = copy.deepcopy(test_metrics)
                 else:
@@ -174,6 +144,6 @@ class Experiment:
 
             # the output is printed. average over all test datasets
             for i in range(len(avg_metrics)):
-                avg_metrics[i] = avg_metrics[i]/len(testset_dict)
+                avg_metrics[i] = avg_metrics[i]/len(test_loader_dict)
 
             return avg_metrics

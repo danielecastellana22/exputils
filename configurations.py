@@ -68,7 +68,6 @@ class ExpConfig:
         if 'experiment_class' in exp_runner_params:
             raise ValueError('Old config file!')
 
-
         exp_runner_params['metric_class_list'] = list(map(string2class, exp_runner_params['metric_class_list']))
 
         config_list = ExpConfig.__build_config_list__(config_dict)
