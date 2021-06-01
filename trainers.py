@@ -3,37 +3,34 @@ import torch as th
 import copy
 import time
 from .metrics import ValueMetricUpdate, TreeMetricUpdate
+from .configurations import create_object_from_config
 
 
 class BaseTrainer:
 
-    # TODO: add here training_params. Also, allows specifying torch callbacks
-    def __init__(self, debug_mode, logger):
+    # TODO: transform trainer in an event dispatcher
+    def __init__(self, debug_mode, logger, n_epochs,
+                 early_stopping_patience=-1, evaluate_on_training_set=False, eps_loss=None):
         self.debug_mode = debug_mode
         self.logger = logger
+        self.n_epochs = n_epochs
+        # TODO: check when these values are not set
+        self.early_stopping_patience = early_stopping_patience
+        self.evaluate_on_training_set = evaluate_on_training_set
+        self.eps_loss = eps_loss
 
-    def __training_step__(self, **kwargs):
-        raise NotImplementedError('This methos must be specified in the subclass')
+    def __training_step__(self, model, in_data, out_data):
+        raise NotImplementedError('This method must be specified in the subclass')
 
-    def __on_epoch_ends__(self, model, **kwargs):
+    def __on_epoch_ends__(self, model):
         pass
 
-    def __early_stopping_on_loss__(self, tot_loss, eps_loss):
+    def __early_stopping_on_loss__(self, tot_loss):
         return False
 
-    def train_and_validate(self, **kwargs):
-
-        # get args
-        model = kwargs.pop('model')
-        train_loader = kwargs.pop('train_loader')
-        val_loader = kwargs.pop('val_loader')
-        metric_class_list = kwargs.pop('metric_class_list')
-        early_stopping_patience = kwargs.pop('early_stopping_patience')
-        evaluate_on_training_set = kwargs.pop('evaluate_on_training_set') if 'evaluate_on_training_set' in kwargs else False
-        eps_loss = kwargs.pop('eps_loss', None)
+    def train_and_validate(self, model, train_loader, val_loader, metric_class_list):
 
         logger = self.logger.getChild('train')
-        n_epochs = kwargs.pop('n_epochs')
 
         best_val_metrics = None
         best_epoch = -1
@@ -45,15 +42,15 @@ class BaseTrainer:
             val_metrics[c.get_name()] = []
             tr_metrics[c.get_name()] = []
 
-        tr_forw_time_list = []
-        tr_backw_time_list = []
+        tr_forward_time_list = []
+        tr_backward_time_list = []
         val_time_list = []
 
-        for epoch in range(1, n_epochs+1):
+        for epoch in range(1, self.n_epochs+1):
             model.train()
 
-            tr_forw_time = 0
-            tr_backw_time = 0
+            tr_forward_time = 0
+            tr_backward_time = 0
 
             # TODO: implement print loss every tot. Can be useful for big dataset
             logger.debug('START TRAINING EPOCH {}.'.format(epoch))
@@ -61,22 +58,23 @@ class BaseTrainer:
             loss_to_print = 0
             tot_loss = 0
 
-            for batch in tqdm(train_loader, desc='Training epoch ' + str(epoch) + ': ', disable=not self.debug_mode ):
+            for batch in tqdm(train_loader, desc='Training epoch ' + str(epoch) + ': ', disable=not self.debug_mode):
                 in_data = batch[0]
                 out_data = batch[1]
-                loss, f_time, b_time = self.__training_step__(model=model, in_data=in_data, out_data=out_data, **kwargs)
+                loss, f_time, b_time = self.__training_step__(model=model, in_data=in_data, out_data=out_data)
                 tot_loss += loss
                 loss_to_print += loss
-                tr_forw_time += f_time
-                tr_backw_time += b_time
+                tr_forward_time += f_time
+                tr_backward_time += b_time
 
             self.logger.info("End training: Epoch {:3d} | Tot. Loss: {:4.3f}".format(epoch, tot_loss))
             self.__on_epoch_ends__(model)
 
-            if evaluate_on_training_set:
+            if self.evaluate_on_training_set:
                 logger.debug("START EVALUATION ON TRAINING SET")
                 # eval on tr set
-                metrics, _, _ = self.__evaluate_model__(model, train_loader, metric_class_list, 'Evaluate epoch ' + str(epoch) + ' on training set: ')
+                metrics, _, _ = self.__evaluate_model__(model, train_loader, metric_class_list,
+                                                        'Evaluate epoch ' + str(epoch) + ' on training set: ')
 
                 # print tr metrics
                 s = "Evaluation on training set: Epoch {:03d} | ".format(epoch)
@@ -87,7 +85,8 @@ class BaseTrainer:
 
             # eval on validation set
             logger.debug("START EVALUATION ON VALIDATION SET")
-            metrics, eval_val_time, _ = self.__evaluate_model__(model, val_loader, metric_class_list, 'Evaluate epoch ' + str(epoch) + ' on validation set: ')
+            metrics, eval_val_time, _ = self.__evaluate_model__(model, val_loader, metric_class_list,
+                                                                'Evaluate epoch ' + str(epoch) + ' on validation set: ')
 
             # print validation metrics
             s = "Evaluation on validation set: Epoch {:03d} | ".format(epoch)
@@ -102,7 +101,7 @@ class BaseTrainer:
                 best_epoch = epoch
                 best_model = copy.deepcopy(model)
             else:
-                # the metrics in poisiton 0 is the one used to validate the model
+                # the metrics in position 0 is the one used to validate the model
                 if metrics[0].is_better_than(best_val_metrics[0]):
                     best_val_metrics = copy.deepcopy(metrics)
                     best_epoch = epoch
@@ -110,12 +109,12 @@ class BaseTrainer:
                     logger.info('Epoch {:03d}: New optimum found'.format(epoch))
                 else:
                     # early stopping
-                    if best_epoch <= epoch - early_stopping_patience or \
-                       self.__early_stopping_on_loss__(tot_loss, eps_loss):
+                    if best_epoch <= epoch - self.early_stopping_patience or \
+                       self.__early_stopping_on_loss__(tot_loss):
                         break
 
-            tr_forw_time_list.append(tr_forw_time)
-            tr_backw_time_list.append(tr_backw_time)
+            tr_forward_time_list.append(tr_forward_time)
+            tr_backward_time_list.append(tr_backward_time)
             val_time_list.append(eval_val_time)
 
         # print best results
@@ -129,8 +128,8 @@ class BaseTrainer:
             'best_epoch': best_epoch,
             'tr_metrics': tr_metrics,
             'val_metrics': val_metrics,
-            'tr_forward_time': tr_forw_time_list,
-            'tr_bakcward_time': tr_backw_time_list,
+            'tr_forward_time': tr_forward_time_list,
+            'tr_backward_time': tr_backward_time_list,
             'val_eval_time': val_time_list}
 
         return best_val_metrics, best_model, info_training
@@ -138,7 +137,8 @@ class BaseTrainer:
     def test(self, model, test_loader, metric_class_list):
 
         logger = self.logger.getChild('test')
-        metrics, _, predictions = self.__evaluate_model__(model, test_loader, metric_class_list, 'Evaluate on test set: ')
+        metrics, _, predictions = self.__evaluate_model__(model, test_loader, metric_class_list,
+                                                          'Evaluate on test set: ')
 
         # print metrics
         s = "Test: "
@@ -179,47 +179,49 @@ class BaseTrainer:
         for v in metrics:
             v.finalise_metric()
 
-        # todo: stack prediciton to remove depencies on batch_size
+        # todo: stack prediction to remove dependencies on batch_size
         return metrics, eval_time, predictions
 
 
 class NeuralTrainer(BaseTrainer):
 
-    def __training_step__(self, model, in_data, out_data, loss_function, optimiser):
+    def __init__(self, debug_mode, logger, n_epochs, optimiser, loss_function):
+
+        self.optimiser = create_object_from_config(optimiser)
+        self.loss_function = create_object_from_config(loss_function)
+        super().__init__(debug_mode, logger, n_epochs)
+
+    def __training_step__(self, model, in_data, out_data):
         t = time.time()
 
         model_output = model(*in_data)
-        loss = loss_function(model_output, out_data)
-        tr_forw_time = (time.time() - t)
+        loss = self.loss_function(model_output, out_data)
+        tr_forward_time = (time.time() - t)
 
         t = time.time()
-        optimiser.zero_grad()
+        self.optimiser.zero_grad()
         loss.backward()
         th.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], 10)
-        optimiser.step()
+        self.optimiser.step()
 
-        tr_backw_time = (time.time() - t)
+        tr_backward_time = (time.time() - t)
 
-        return loss.item(), tr_forw_time, tr_backw_time
+        return loss.item(), tr_forward_time, tr_backward_time
 
 
 class EMTrainer(BaseTrainer):
 
     def __training_step__(self, model, in_data, out_data):
         t = time.time()
-        loglike = model(*in_data, out_data=out_data)
-        tr_forw_time = (time.time() - t)
+        log_like = model(*in_data, out_data=out_data)
+        tr_forward_time = (time.time() - t)
 
-        # t = time.time()
-        # model.accumulate_posterior(in_data, out_data)
-        # tr_backw_time = (time.time() - t)
+        return log_like.item(), tr_forward_time, 0
 
-        return loglike.item(), tr_forw_time, 0
-
-    def __on_epoch_ends__(self, model, **kwargs):
+    def __on_epoch_ends__(self, model):
         model.m_step()
 
-    def __early_stopping_on_loss__(self, tot_loss, eps_loss):
+    def __early_stopping_on_loss__(self, tot_loss):
         if not hasattr(self, 'prev_loss'):
             self.prev_loss = tot_loss
             return False
@@ -231,14 +233,10 @@ class EMTrainer(BaseTrainer):
                 else:
                     self.n_epoch_decr = 1
 
-                # stop after 5 epoch with decreasing loglikelihood
+                # stop after 5 epoch with decreasing log-likelihood
                 return self.n_epoch_decr >= 5
             else:
                 self.n_epoch_decr = 0
-                out = (tot_loss - self.prev_loss) < eps_loss
+                out = (tot_loss - self.prev_loss) < self.eps_loss
                 self.prev_loss = tot_loss
                 return out
-
-
-
-

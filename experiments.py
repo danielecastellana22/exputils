@@ -64,16 +64,6 @@ class Experiment:
     def __get_trainer__(self):
         return create_object_from_config(self.config.trainer_config, debug_mode=self.debug_mode, logger=self.logger)
 
-    def __get_training_params__(self, model, device):
-        d = copy.deepcopy(self.config.trainer_config.training_params)
-
-        if 'optimiser' in d:
-            d['optimiser'] = self.__get_optimiser__(d['optimiser'], model)
-        if 'loss_function' in d:
-            d['loss_function'] = create_object_from_config(d['loss_function'])
-
-        return d
-
     ####################################################################################################################
     # UTILS FUNCTIONS
     ####################################################################################################################
@@ -102,15 +92,12 @@ class Experiment:
         m.to(dev)
 
         trainer = self.__get_trainer__()
-        training_params = self.__get_training_params__(m, dev)
 
         # train and validate
-        # TODO: trainer must takes dataloader as input
         best_val_metrics, best_model, info_training = trainer.train_and_validate(model=m,
                                                                                  train_loader=train_loader,
                                                                                  val_loader=val_loader,
-                                                                                 metric_class_list=metric_class_list,
-                                                                                 **training_params)
+                                                                                 metric_class_list=metric_class_list)
 
         best_val_metrics_dict = {x.get_name(): x.get_value() for x in best_val_metrics}
 
