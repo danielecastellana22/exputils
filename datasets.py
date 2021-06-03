@@ -40,7 +40,7 @@ class BaseDatasetLoader:
         raise NotImplementedError('Must be implemented in subclasses')
 
     @abstractmethod
-    def __collate_fun__(self,**args):
+    def __collate_fun__(self, data):
         raise NotImplementedError('Must be implemented in subclasses')
 
     def __get_data_loader__(self, dataset, shuffle):
