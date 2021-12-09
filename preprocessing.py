@@ -6,8 +6,9 @@ from .serialisation import to_json_file
 
 class Preprocessor:
 
-    def __init__(self, config):
-        self.config = config
+    def __init__(self, input_dir, output_dir):
+        self.input_dir = input_dir
+        self.output_dir = output_dir
         self.dataset_stats = {}
         self.words_vocab = {}
         self.outputs_vocab = {}
@@ -30,7 +31,7 @@ class Preprocessor:
             eprint('{}:  {}.'.format(k, v))
 
     def __save_stats__(self):
-        output_dir = self.config.output_dir
+        output_dir = self.output_dir
 
         # save all stats
         eprint('Saving dataset stats.')
