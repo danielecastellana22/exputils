@@ -6,11 +6,22 @@ from .metrics import ValueMetricUpdate, TreeMetricUpdate
 from .configurations import create_object_from_config
 
 
+def __update_metrics__(model_pred, in_data, out_data, metrics):
+    # update all metrics
+    for v in metrics:
+        if isinstance(v, ValueMetricUpdate):
+            v.update_metric(model_pred, out_data)
+
+        if isinstance(v, TreeMetricUpdate):
+            v.update_metric(model_pred, out_data, *in_data)
+
+
 class BaseTrainer:
 
     # TODO: transform trainer in an event dispatcher
     def __init__(self, debug_mode, logger, n_epochs,
-                 early_stopping_patience=-1, evaluate_on_training_set=False, eps_loss=None):
+                 early_stopping_patience=-1, evaluate_on_training_set=True, eps_loss=None,
+                 min_n_epochs=1):
         self.debug_mode = debug_mode
         self.logger = logger
         self.n_epochs = n_epochs
@@ -18,6 +29,10 @@ class BaseTrainer:
         self.early_stopping_patience = early_stopping_patience
         self.evaluate_on_training_set = evaluate_on_training_set
         self.eps_loss = eps_loss
+        self.min_n_epochs = min_n_epochs
+
+    def __on_training_start__(self, logger, model, train_loader, val_loader, metric_class_list):
+        pass
 
     def __training_step__(self, model, in_data, out_data):
         raise NotImplementedError('This method must be specified in the subclass')
@@ -32,15 +47,17 @@ class BaseTrainer:
 
         logger = self.logger.getChild('train')
 
+        self.__on_training_start__(logger, model, train_loader, val_loader,metric_class_list)
+
         best_val_metrics = None
         best_epoch = -1
         best_model = None
 
-        val_metrics = {}
-        tr_metrics = {}
+        val_metrics_dict = {}
+        tr_metrics_dict = {}
         for c in metric_class_list:
-            val_metrics[c.get_name()] = []
-            tr_metrics[c.get_name()] = []
+            val_metrics_dict[c.get_name()] = []
+            tr_metrics_dict[c.get_name()] = []
 
         tr_forward_time_list = []
         tr_backward_time_list = []
@@ -58,19 +75,40 @@ class BaseTrainer:
             loss_to_print = 0
             tot_loss = 0
 
+            # initialise online training metrics. ONLY NEURAL MODEL CAN COMPUTE THEM
+            compute_tr_metrics_online = False
+            online_tr_metrics = []
+            for c in metric_class_list:
+                online_tr_metrics.append(c())
+
             for batch in tqdm(train_loader, desc='Training epoch ' + str(epoch) + ': ', disable=not self.debug_mode):
                 in_data = batch[0]
                 out_data = batch[1]
-                loss, f_time, b_time = self.__training_step__(model=model, in_data=in_data, out_data=out_data)
-                tot_loss += loss
-                loss_to_print += loss
-                tr_forward_time += f_time
-                tr_backward_time += b_time
+                dict_out = self.__training_step__(model=model, in_data=in_data, out_data=out_data)
+                tot_loss += dict_out['loss']
+                loss_to_print += dict_out['loss']
+                tr_forward_time += dict_out['tr_forward_time']
+                tr_backward_time += dict_out['tr_backward_time']
 
-            self.logger.info("End training: Epoch {:3d} | Tot. Loss: {:4.3f}".format(epoch, tot_loss))
+                if dict_out['predictions'] is not None:
+                    compute_tr_metrics_online = True
+                    # evaluate metrics
+                    __update_metrics__(dict_out['predictions'], in_data, out_data, online_tr_metrics)
+
+            # finalise tr_metrics
+            s = "End training: Epoch {:3d} | Tot. Loss: {:4.3f}".format(epoch, tot_loss)
+            if compute_tr_metrics_online:
+                s += ' | '
+                for v in online_tr_metrics:
+                    v.finalise_metric()
+                    s += str(v) + " | "
+                    tr_metrics_dict[v.get_name()].append(v.get_value())
+            self.logger.info(s)
             self.__on_epoch_ends__(model)
 
-            if self.evaluate_on_training_set:
+            # if tr_metrics are not computed onlin, we visit again the whole training set.
+            # PROBABILISTIC MODEL NEEDS THIS
+            if not compute_tr_metrics_online and self.evaluate_on_training_set:
                 logger.debug("START EVALUATION ON TRAINING SET")
                 # eval on tr set
                 metrics, _, _ = self.__evaluate_model__(model, train_loader, metric_class_list,
@@ -80,38 +118,40 @@ class BaseTrainer:
                 s = "Evaluation on training set: Epoch {:03d} | ".format(epoch)
                 for v in metrics:
                     s += str(v) + " | "
-                    tr_metrics[v.get_name()].append(v.get_value())
+                    tr_metrics_dict[v.get_name()].append(v.get_value())
                 logger.info(s)
 
             # eval on validation set
-            logger.debug("START EVALUATION ON VALIDATION SET")
-            metrics, eval_val_time, _ = self.__evaluate_model__(model, val_loader, metric_class_list,
-                                                                'Evaluate epoch ' + str(epoch) + ' on validation set: ')
+            eval_val_time = 0
+            if epoch > self.min_n_epochs:
+                logger.debug("START EVALUATION ON VALIDATION SET")
+                metrics, eval_val_time, _ = self.__evaluate_model__(model, val_loader, metric_class_list,
+                                                                    'Evaluate epoch ' + str(epoch) + ' on validation set: ')
 
-            # print validation metrics
-            s = "Evaluation on validation set: Epoch {:03d} | ".format(epoch)
-            for v in metrics:
-                s += str(v) + " | "
-                val_metrics[v.get_name()].append(v.get_value())
-            logger.info(s)
+                # print validation metrics
+                s = "Evaluation on validation set: Epoch {:03d} | ".format(epoch)
+                for v in metrics:
+                    s += str(v) + " | "
+                    val_metrics_dict[v.get_name()].append(v.get_value())
+                logger.info(s)
 
-            # select best model
-            if best_val_metrics is None:
-                best_val_metrics = copy.deepcopy(metrics)
-                best_epoch = epoch
-                best_model = copy.deepcopy(model)
-            else:
-                # the metrics in position 0 is the one used to validate the model
-                if metrics[0].is_better_than(best_val_metrics[0]):
+                # select best model
+                if best_val_metrics is None:
                     best_val_metrics = copy.deepcopy(metrics)
                     best_epoch = epoch
                     best_model = copy.deepcopy(model)
-                    logger.info('Epoch {:03d}: New optimum found'.format(epoch))
                 else:
-                    # early stopping
-                    if best_epoch <= epoch - self.early_stopping_patience or \
-                       self.__early_stopping_on_loss__(tot_loss):
-                        break
+                    # the metrics in position 0 is the one used to validate the model
+                    if metrics[0].is_better_than(best_val_metrics[0]):
+                        best_val_metrics = copy.deepcopy(metrics)
+                        best_epoch = epoch
+                        best_model = copy.deepcopy(model)
+                        logger.info('Epoch {:03d}: New optimum found'.format(epoch))
+                    else:
+                        # early stopping
+                        if best_epoch <= epoch - self.early_stopping_patience or \
+                           self.__early_stopping_on_loss__(tot_loss):
+                            break
 
             tr_forward_time_list.append(tr_forward_time)
             tr_backward_time_list.append(tr_backward_time)
@@ -126,8 +166,8 @@ class BaseTrainer:
         # build vocabulary for the result
         info_training = {
             'best_epoch': best_epoch,
-            'tr_metrics': tr_metrics,
-            'val_metrics': val_metrics,
+            'tr_metrics': tr_metrics_dict,
+            'val_metrics': val_metrics_dict,
             'tr_forward_time': tr_forward_time_list,
             'tr_backward_time': tr_backward_time_list,
             'val_eval_time': val_time_list}
@@ -167,29 +207,26 @@ class BaseTrainer:
 
             predictions.append(out)
 
-            # update all metrics
-            for v in metrics:
-                if isinstance(v, ValueMetricUpdate):
-                    v.update_metric(out, out_data)
+            __update_metrics__(out, in_data, out_data, metrics)
 
-                if isinstance(v, TreeMetricUpdate):
-                    v.update_metric(out, out_data, *in_data)
             eval_time += (time.time() - t)
 
         for v in metrics:
             v.finalise_metric()
 
-        # todo: stack prediction to remove dependencies on batch_size
-        return metrics, eval_time, predictions
+        return metrics, eval_time, th.stack(predictions, dim=0)
 
 
 class NeuralTrainer(BaseTrainer):
 
-    def __init__(self, debug_mode, logger, n_epochs, optimiser, loss_function):
-
-        self.optimiser = create_object_from_config(optimiser)
+    def __init__(self, optimiser, loss_function, **kwargs):
+        super().__init__(**kwargs)
+        self.optimiser_config = optimiser
+        self.optimiser = None
         self.loss_function = create_object_from_config(loss_function)
-        super().__init__(debug_mode, logger, n_epochs)
+
+    def __on_training_start__(self, logger, model, train_loader, val_loader, metric_class_list):
+        self.optimiser = create_object_from_config(self.optimiser_config, params=[x for x in model.parameters() if x.requires_grad])
 
     def __training_step__(self, model, in_data, out_data):
         t = time.time()
@@ -206,7 +243,8 @@ class NeuralTrainer(BaseTrainer):
 
         tr_backward_time = (time.time() - t)
 
-        return loss.item(), tr_forward_time, tr_backward_time
+        return {'loss': loss.item(), 'predictions': model_output,
+                'tr_forward_time': tr_forward_time, 'tr_backward_time': tr_backward_time}
 
 
 class EMTrainer(BaseTrainer):
@@ -216,7 +254,7 @@ class EMTrainer(BaseTrainer):
         log_like = model(*in_data, out_data=out_data)
         tr_forward_time = (time.time() - t)
 
-        return log_like.item(), tr_forward_time, 0
+        return {'loss': log_like.item(), 'predictions': {}, 'tr_forward_time': tr_forward_time, 'tr_backward_time': 0}
 
     def __on_epoch_ends__(self, model):
         model.m_step()

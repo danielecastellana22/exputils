@@ -53,14 +53,6 @@ class Experiment:
     ####################################################################################################################
     # TRAINER FUNCTIONS
     ####################################################################################################################
-    @staticmethod
-    def __get_optimiser__(optim_config, model):
-        optim_class = string2class(optim_config['class'])
-        params_groups = dict(optim_config.params) if 'params' in optim_config else {}
-        params_groups.update({'params': [x for x in model.parameters() if x.requires_grad]})
-
-        return optim_class([params_groups])
-
     def __get_trainer__(self):
         return create_object_from_config(self.config.trainer_config, debug_mode=self.debug_mode, logger=self.logger)
 
