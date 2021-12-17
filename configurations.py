@@ -1,8 +1,8 @@
 import copy
 from collections import OrderedDict
 
-from .utils import string2class
-from .serialisation import from_yaml_file, from_json_file
+from utils import string2class
+from serialisation import from_yaml_file, from_json_file
 
 
 class Config(dict):
@@ -49,7 +49,8 @@ class ExpConfig:
                 # now becomes a list
                 v = __rec_build__(v, list(v.keys()), {})
 
-            if isinstance(v, list):
+            if (isinstance(v, list) and not k.endswith('_list')) or \
+                    (isinstance(v, list) and k.endswith('_list') and isinstance(v[0], list)):
                 for vv in v:
                     d_out[k] = vv
                     out_list += __rec_build__(d, k_list[1:], d_out)
@@ -78,6 +79,7 @@ class ExpConfig:
 
         return exp_runner_params, ris
 
+    # mehtods to obtain the grid from a config file. Usegul for visualisation
     @staticmethod
     def __build_grid_dict__(config_dict):
         d_out = OrderedDict()
@@ -87,9 +89,9 @@ class ExpConfig:
                 k_pre = k_pre + '.'
             for k, v in d.items():
                 if isinstance(v, list):
-                    d_out[k_pre+k] = copy.deepcopy(v)
+                    d_out[k_pre + k] = copy.deepcopy(v)
                 elif isinstance(v, dict):
-                    __rec_build__(v, k_pre+k)
+                    __rec_build__(v, k_pre + k)
 
         __rec_build__(config_dict, '')
         return d_out

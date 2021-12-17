@@ -1,9 +1,9 @@
 import os
 # to redcue the number of thread in each process
 os.environ['OMP_NUM_THREADS'] = '1'
-from .configurations import ExpConfig
 import argparse
-from .runners import ExperimentRunner
+from exputils.configurations import ExpConfig
+from exputils.runners import ExperimentRunner
 
 
 def parse_arguments():

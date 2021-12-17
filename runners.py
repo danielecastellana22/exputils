@@ -3,9 +3,9 @@ import numpy as np
 from concurrent.futures import ProcessPoolExecutor
 import concurrent.futures
 import random
-from .utils import get_logger, create_datatime_dir, set_initial_seed
-from .serialisation import to_json_file, from_json_file
-from .experiments import Experiment
+from exputils.utils import get_logger, create_datatime_dir, set_initial_seed
+from exputils.serialisation import to_json_file, from_json_file
+from exputils.experiments import Experiment
 
 
 class ExperimentRunner:

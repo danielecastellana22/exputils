@@ -2,8 +2,8 @@ from tqdm import tqdm
 import torch as th
 import copy
 import time
-from .metrics import ValueMetricUpdate, TreeMetricUpdate
-from .configurations import create_object_from_config
+from exputils.metrics import ValueMetricUpdate, TreeMetricUpdate
+from exputils.configurations import create_object_from_config
 
 
 def __update_metrics__(model_pred, in_data, out_data, metrics):

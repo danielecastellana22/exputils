@@ -1,7 +1,7 @@
 import os
 from abc import abstractmethod, ABC
 from torch.utils.data import Dataset, ConcatDataset, DataLoader
-from .serialisation import from_pkl_file
+from serialisation import from_pkl_file
 
 
 class ListDataset(Dataset):

@@ -3,10 +3,9 @@ import torch as th
 from torch.utils.data import ConcatDataset
 import copy
 
-from .utils import set_initial_seed, string2class
-from .serialisation import to_json_file, from_pkl_file, to_torch_file, from_torch_file
-from .configurations import create_object_from_config
-from .datasets import ListDataset
+from utils import set_initial_seed
+from serialisation import to_json_file, to_torch_file, from_torch_file
+from configurations import create_object_from_config
 
 
 # class for all experiments

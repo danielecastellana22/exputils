@@ -1,7 +1,7 @@
 import os
 from abc import abstractmethod
-from .utils import eprint
-from .serialisation import to_json_file
+from exputils.utils import eprint
+from exputils.serialisation import to_json_file
 
 
 class Preprocessor:

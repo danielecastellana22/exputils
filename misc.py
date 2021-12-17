@@ -1,9 +1,8 @@
 from tqdm import tqdm
 import numpy as np
 import re
-
-from .utils import eprint
-from .datasets import ConstValues
+from exputils.utils import eprint
+from exputils.datasets import ConstValues
 
 
 def load_embeddings(pretrained_embs_file, vocab, embedding_dim):

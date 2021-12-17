@@ -1,7 +1,7 @@
 import os
 import argparse
-from .configurations import Config, create_object_from_config
-from .utils import eprint
+from exputils.configurations import Config, create_object_from_config
+from exputils.utils import eprint
 
 
 def parse_arguments():
