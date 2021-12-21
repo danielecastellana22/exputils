@@ -104,7 +104,8 @@ class ExperimentRunner:
             self.logger.info('{}: {}.'.format(output_msg, ' | '.join(map(str, fut.result()))))
 
         fun_params = [config, exp_id, exp_out_dir, self.metric_class_list, do_test, self.device,
-                      random.randrange(2**32-1), self.debug_mode]
+                      random.randrange(2**32-1) if not self.debug_mode else self.seed,
+                      self.debug_mode]
         if self.debug_mode:
             ris = self.__exp_execution_fun__(*fun_params)
             self.logger.info('{}: {}.'.format(output_msg, ' | '.join(map(str, ris))))
