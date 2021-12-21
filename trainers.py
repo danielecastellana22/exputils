@@ -2,18 +2,13 @@ from tqdm import tqdm
 import torch as th
 import copy
 import time
-from exputils.metrics import ValueMetricUpdate, TreeMetricUpdate
 from exputils.configurations import create_object_from_config
 
 
 def __update_metrics__(model_pred, in_data, out_data, metrics):
     # update all metrics
     for v in metrics:
-        if isinstance(v, ValueMetricUpdate):
-            v.update_metric(model_pred, out_data)
-
-        if isinstance(v, TreeMetricUpdate):
-            v.update_metric(model_pred, out_data, *in_data)
+        v.update_metric(model_pred, out_data, *in_data)
 
 
 class BaseTrainer:
@@ -195,14 +190,13 @@ class BaseTrainer:
         return metrics, predictions
 
     def __evaluate_model__(self, model, data_loader, metric_class_list, desc):
-        predictions = []
         eval_time = 0
         metrics = []
         for c in metric_class_list:
             metrics.append(c())
 
+        predictions = []
         model.eval()
-
         for batch in tqdm(data_loader, desc=desc, disable=not self.debug_mode):
             t = time.time()
             in_data = batch[0]

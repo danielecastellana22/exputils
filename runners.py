@@ -11,6 +11,7 @@ from exputils.experiments import Experiment
 class ExperimentRunner:
 
     # TODO: add recovery strategy: a flag which indicates train, recover, test
+    # TODO: seed does not work
     def __init__(self, output_dir, num_run, num_workers, metric_class_list, device, config_list, seed, debug_mode):
         # self.experiment_class = experiment_class
         self.device = device
