@@ -1,7 +1,12 @@
 import os
 from abc import abstractmethod, ABC
 from torch.utils.data import Dataset, ConcatDataset, DataLoader
-from serialisation import from_pkl_file
+from exputils.serialisation import from_pkl_file
+
+
+class ConstValues:
+    UNK = 0
+    NO_ELEMENT = -1
 
 
 class ListDataset(Dataset):
@@ -14,11 +19,6 @@ class ListDataset(Dataset):
 
     def __len__(self):
         return len(self.data)
-
-
-class ConstValues:
-    UNK = 0
-    NO_ELEMENT = -1
 
 
 class BaseDatasetLoader:

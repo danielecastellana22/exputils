@@ -3,9 +3,9 @@ import torch as th
 from torch.utils.data import ConcatDataset
 import copy
 
-from utils import set_initial_seed
-from serialisation import to_json_file, to_torch_file, from_torch_file
-from configurations import create_object_from_config
+from exputils.utils import set_initial_seed
+from exputils.serialisation import to_json_file, to_torch_file, from_torch_file
+from exputils.configurations import create_object_from_config
 
 
 # class for all experiments

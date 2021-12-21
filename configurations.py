@@ -1,8 +1,8 @@
 import copy
 from collections import OrderedDict
 
-from utils import string2class
-from serialisation import from_yaml_file, from_json_file
+from exputils.utils import string2class
+from exputils.serialisation import from_yaml_file, from_json_file
 
 
 class Config(dict):
@@ -108,5 +108,6 @@ class ExpConfig:
 def create_object_from_config(obj_config, **other_params):
     class_name = string2class(obj_config['class'])
     params = obj_config['params'] if 'params' in obj_config else {}
-    params.update(other_params)
-    return class_name(**params)
+    all_params = copy.deepcopy(params)
+    all_params.update(other_params)
+    return class_name(**all_params)

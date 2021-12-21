@@ -2,7 +2,7 @@ from abc import abstractmethod
 import torch as th
 import copy
 
-from datasets import ConstValues
+from exputils.datasets import ConstValues
 
 
 class BaseMetric:
