@@ -84,7 +84,12 @@ class BaseTrainer:
             for batch in tqdm(train_loader, desc='Training epoch ' + str(epoch) + ': ', disable=not self.debug_mode):
                 in_data = batch[0]
                 out_data = batch[1]
-                dict_out = self.__training_step__(model=model, in_data=in_data, out_data=out_data)
+                if self.debug_mode:
+                    with th.autograd.detect_anomaly():
+                        dict_out = self.__training_step__(model=model, in_data=in_data, out_data=out_data)
+                else:
+                    dict_out = self.__training_step__(model=model, in_data=in_data, out_data=out_data)
+
                 tot_loss += dict_out['loss']
                 loss_to_print += dict_out['loss']
                 tr_forward_time += dict_out['tr_forward_time']
@@ -232,6 +237,7 @@ class NeuralTrainer(BaseTrainer):
         t = time.time()
 
         model_output = model(*in_data)
+
         loss = self.loss_function(model_output, out_data)
         tr_forward_time = (time.time() - t)
 
